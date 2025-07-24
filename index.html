@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Günlük Notlarım</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 600px; margin: 40px auto; background: #f4f6f8; padding: 0 20px; }
+    h1 { text-align: center; }
+    #noteCount { text-align: center; color: #666; margin-bottom: 10px; }
+    form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+    textarea { padding: 10px; resize: vertical; font-size: 16px; border-radius: 4px; border: 1px solid #ccc; min-height: 100px; }
+    button { padding: 8px 16px; background: #009688; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+    button:hover { background: #00796b; }
+    .note { background: white; margin: 8px 0; padding: 12px; border-radius: 4px; box-shadow: 0 2px 4px #ddd; position: relative; }
+    .note-buttons { display: none; position: absolute; top: 8px; right: 8px; gap: 6px; }
+    .note-edit, .note-delete { background: #eee; border: none; border-radius: 3px; font-size: 13px; cursor: pointer; padding: 2px 7px; margin-left: 2px;}
+    .note-edit:hover { background: #ffe082; }
+    .note-delete:hover { background: #ffab91; }
+    .note-editing { border: 2px solid #009688; background: #e0f2f1; }
+    .timestamp { font-size: 12px; color: #939393; margin-top: 6px; display: block; text-align: right; }
+  </style>
+</head>
+<body>
+  <h1>Günlük Notlarım</h1>
+  <div id="noteCount">Yükleniyor...</div>
+  <form id="noteForm">
+    <textarea id="noteInput" placeholder="Bugünkü notunuzu yazın..."></textarea>
+    <button type="submit">Notu Kaydet</button>
+  </form>
+  <div id="notesList"></div>
+  <script>
+    let notes = [];
+    let editingId = null;
+
+    async function loadNotes() {
+      const res = await fetch('/notes');
+      notes = await res.json();
+      showNotes();
+      document.getElementById('noteCount').textContent = `Toplam ${notes.length} kayıtlı not var.`;
+    }
+
+    function createNoteElement(note) {
+      const div = document.createElement('div');
+      div.className = 'note';
+      div.tabIndex = 0;
+      div.setAttribute('data-id', note.id);
+
+      // Not yazısı veya düzenleme alanı
+      if (editingId === note.id) {
+        const textarea = document.createElement('textarea');
+        textarea.value = note.content;
+        textarea.style.width = '100%';
+        textarea.style.fontSize = '15px';
+        textarea.rows = 4;
+        div.classList.add('note-editing');
+        div.appendChild(textarea);
+
+        // Kaydet ve İptal seçenekleri
+        const btnSave = document.createElement('button');
+        btnSave.textContent = 'Kaydet';
+        btnSave.className = 'note-edit';
+        btnSave.onclick = async () => {
+          await fetch(`/notes/${note.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: textarea.value }),
+          });
+          editingId = null;
+          loadNotes();
+        };
+
+        const btnCancel = document.createElement('button');
+        btnCancel.textContent = 'İptal';
+        btnCancel.className = 'note-edit';
+        btnCancel.onclick = () => {
+          editingId = null;
+          showNotes();
+        };
+
+        const btns = document.createElement('div');
+        btns.style.marginTop = '8px';
+        btns.appendChild(btnSave);
+        btns.appendChild(btnCancel);
+        div.appendChild(btns);
+      } else {
+        // Normal Gösterim
+        div.textContent = note.content;
+
+        // Mouse ile çift tık/dokunma ile butonları göster
+        div.ondblclick = () => {
+          editingId = note.id;
+          showNotes();
+        };
+        // Not silme ve düzenleme butonları
+        const buttons = document.createElement('div');
+        buttons.className = 'note-buttons';
+
+        const btnEdit = document.createElement('button');
+        btnEdit.textContent = 'Düzenle';
+        btnEdit.className = 'note-edit';
+        btnEdit.onclick = (e) => {
+          e.stopPropagation();
+          editingId = note.id;
+          showNotes();
+        };
+
+        const btnDelete = document.createElement('button');
+        btnDelete.textContent = 'Sil';
+        btnDelete.className = 'note-delete';
+        btnDelete.onclick = async (e) => {
+          e.stopPropagation();
+          if (confirm('Bu not silinsin mi?')) {
+            await fetch(`/notes/${note.id}`, { method: 'DELETE' });
+            loadNotes();
+          }
+        };
+
+        buttons.appendChild(btnEdit);
+        buttons.appendChild(btnDelete);
+        div.appendChild(buttons);
+
+        // Fareyle gelince butonlar görünsün
+        div.onmouseenter = () => buttons.style.display = 'flex';
+        div.onmouseleave = () => buttons.style.display = 'none';
+
+        // Zaman damgası
+        const ts = document.createElement('span');
+        ts.className = 'timestamp';
+        ts.textContent = `Kayıt tarihi: ${new Date(note.created_at).toLocaleString('tr-TR')}`;
+        div.appendChild(ts);
+      }
+      return div;
+    }
+
+    function showNotes() {
+      const notesList = document.getElementById('notesList');
+      notesList.innerHTML = '';
+      notes.forEach(note => notesList.appendChild(createNoteElement(note)));
+      document.getElementById('noteCount').textContent = `Toplam ${notes.length} kayıtlı not var.`;
+    }
+
+    document.getElementById('noteForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const noteInput = document.getElementById('noteInput');
+      const content = noteInput.value.trim();
+      if (!content) return;
+      await fetch('/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      noteInput.value = '';
+      loadNotes();
+    });
+
+    window.onload = loadNotes;
+  </script>
+</body>
+</html>
